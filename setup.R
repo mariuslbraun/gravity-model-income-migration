@@ -19,7 +19,7 @@ renv::init(bare = TRUE)
 
 # Install the packages
 install.packages(c(
-  "tidyverse", "dplyr", "stringr", "readxl"
+  "tidyverse", "dplyr", "stringr", "readxl", "readr"
   ))
 
 # Take a snapshot of the renv
