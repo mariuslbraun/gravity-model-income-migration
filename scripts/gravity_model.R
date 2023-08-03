@@ -117,6 +117,9 @@ baseline_formula = "Value ~ gdp_pc_ratio + dist + as.factor(X...CO2) + as.factor
 # additional covariates
 covars = c("", "colony", "comlang_ethno")
 
+# create folder to store model RDS files
+dir.create("models", showWarnings = F)
+
 # estimate models, consecutively adding covariates
 for(i in 1:length(covars)) {
   # create model name
