@@ -11,6 +11,10 @@ library(dplyr)
 library(stringr)
 library(readr)
 library(readxl)
+library(parallel)
+library(doSNOW)
+library(foreach)
+library(stargazer)
 
 # clear workspace
 rm(list=ls())
@@ -112,7 +116,7 @@ df$COU_YEA = paste0(df$COU, df$YEA)
 
 #### 4. estimate gravity model ####
 # baseline formula
-baseline_formula = "Value ~ gdp_pc_ratio + dist + as.factor(X...CO2) + as.factor(COU_YEA)"
+baseline_formula = "Value ~ gdp_pc_ratio + dist + factor(X...CO2) + factor(COU_YEA)"
 
 # additional covariates
 covars = c("", "colony", "comlang_ethno")
@@ -120,8 +124,19 @@ covars = c("", "colony", "comlang_ethno")
 # create folder to store model RDS files
 dir.create("models", showWarnings = F)
 
+# prepare parallelized computation
+cl = makeCluster(detectCores() - 2, type = "SOCK") # make cluster
+registerDoSNOW(cl) # register cluster
+packages = c(
+  "tidyverse", "dplyr", "stringr", "readxl", "readr", "parallel",
+  "doSNOW", "foreach"
+)
+
 # estimate models, consecutively adding covariates
-for(i in 1:length(covars)) {
+gravity_output = foreach(
+  i = 1:length(covars),
+  .packages = packages
+  ) %dopar% {
   # create model name
   gravity_model_name = paste(
     "gravity_model",
@@ -148,13 +163,33 @@ for(i in 1:length(covars)) {
     )
   )
   
-  # save model as RDS file
-  saveRDS(
-    object = get(gravity_model_name),
-    file = file.path("models", paste0(gravity_model_name, ".rds"))
-  )
-  
-  # print summary of gravity model
-  summary(get(gravity_model_name))
+  # # save model as RDS file
+  # saveRDS(
+  #   object = get(gravity_model_name),
+  #   file = file.path("models", paste0(gravity_model_name, ".rds"))
+  # )
+  return(get(gravity_model_name))
 }
-rm(i, gravity_model_name)
+stopCluster(cl)
+rm(cl, packages)
+
+
+#### 5. create LaTeX regression table ####
+# create directory for LaTeX table
+dir.create("tables", showWarnings = F)
+
+# write regression output to LaTeX table
+writeLines(
+  capture.output(
+    stargazer(
+      gravity_output,
+      dep.var.labels = "Bilateral migration rate",
+      column.sep.width = "0pt",
+      omit.stat = c("f", "ser"),
+      omit = c("X...CO2", "COU_YEA"),
+      no.space = TRUE
+      )
+  ),
+  "tables/gravity_models.tex"
+)
+rm(gravity_output)
