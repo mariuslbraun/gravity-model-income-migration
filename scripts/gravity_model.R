@@ -15,13 +15,15 @@ library(parallel)
 library(doSNOW)
 library(foreach)
 library(stargazer)
+library(jsonlite)
+library(tibble)
 
 # clear workspace
 rm(list=ls())
 
 
 
-#### 1. load migration data ####
+#### load migration data ####
 df = read.csv(
   "raw/MIG_02052023143458762.csv",
   header = T
@@ -34,7 +36,7 @@ df = read.csv(
 
 
 
-#### 2. load dyadic country variables ####
+#### load dyadic country variables ####
 distances = read_xls(
   "raw/dist_cepii.xls",
   col_names = T
@@ -55,7 +57,7 @@ df = left_join(
 
 
 
-#### 3. load GDP per capita data ####
+#### load GDP per capita data ####
 gdp_pc = read.csv(
   "raw/75d59fa2-c7f9-4cb3-899f-ae8ab410f1e3_Data.csv",
   header = T
@@ -114,12 +116,101 @@ df$COU_YEA = paste0(df$COU, df$YEA)
 
 
 
-#### 4. estimate gravity model ####
+#### load climate data ####
+# create vector of climate variable names (temperature and precipitation)
+climate_vars = c("tas", "pr")
+
+# create country code vector from data frame
+countrycodes = toString(unique(df$X...CO2)) %>%
+  str_remove_all(" ")
+
+# download climate data using CCKP API
+for(i in 1:length(climate_vars)) {
+  # data frame name
+  data_name = paste(
+    climate_vars[i],
+    "data",
+    sep = "_"
+  )
+  
+  # API query (saves as JSON file)
+  download.file(
+    url = paste0(
+      "https://cckpapi.worldbank.org/cckp/v1/cru-x0.5_timeseries_",
+      climate_vars[i],
+      "_timeseries_annual_1901-2022_mean_historical_cru_ts4.07_mean/",
+      countrycodes,
+      "?_format=json"
+    ),
+    destfile = file.path("raw", paste0(data_name, ".json"))
+  )
+  
+  # load JSON file into workspace
+  climate_data = as.data.frame(
+    t(
+      do.call(
+        cbind,
+        (
+          read_json(
+            file.path("raw", paste0(data_name, ".json")),
+            simplifyVector = T
+          )
+        )$data
+      )
+    )
+  ) %>% tibble::rownames_to_column(
+    var = "country"
+  ) %>% pivot_longer(
+    cols = !country,
+    names_to = "year",
+    values_to = "value"
+  )
+  
+  # convert year and value to numeric
+  climate_data$year = as.numeric(
+    str_replace_all(
+      climate_data$year,
+      "-07",
+      ""
+    )
+  )
+  climate_data$value = as.numeric(climate_data$value)
+  
+  # calculate climatic anomalies relative to 20th century
+  climate_data$anom = (climate_data$value - mean(climate_data$value)) /
+    sd(climate_data$value)
+  
+  climate_data = climate_data %>% rename_with(
+   .fn = ~ paste(climate_vars[i], "anom", sep = "_"),
+   .cols = ends_with("anom")
+  )
+  
+  # join with data frame
+  df = left_join(
+    df,
+    climate_data,
+    by = join_by(
+      X...CO2 == country,
+      YEA == year
+    )
+  )
+  df = df %>% select(
+    -value
+  )
+}
+rm(i, data_name, climate_data)
+
+# save data frame as RDS file
+saveRDS(df, "prepared/df.rds")
+
+
+
+#### estimate gravity model ####
 # baseline formula
 baseline_formula = "Value ~ gdp_pc_ratio + dist + factor(X...CO2) + factor(COU_YEA)"
 
 # additional covariates
-covars = c("", "colony", "comlang_ethno")
+covars = c("", "colony", "comlang_ethno", paste(climate_vars, "anom", sep = "_"))
 
 # create folder to store model RDS files
 dir.create("models", showWarnings = F)
@@ -174,7 +265,7 @@ stopCluster(cl)
 rm(cl, packages)
 
 
-#### 5. create LaTeX regression table ####
+#### create LaTeX regression table ####
 # create directory for LaTeX table
 dir.create("tables", showWarnings = F)
 
