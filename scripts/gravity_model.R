@@ -4,6 +4,9 @@
 # Database, and data on distance, common languages and former colonial
 # relationships is taken from the GeoDist CEPII database. GDP per capita data
 # is obtained from the World Development Indicators by the World Bank.
+# Data on temperature and precipitation in countries of origin is obtained
+# via the World Bank Climate Change Knowledge Portal API, and data on intra-
+# state conflict is taken from the Uppsala Conflict Data Program.
 
 # load packages
 library(tidyverse)
@@ -17,6 +20,7 @@ library(foreach)
 library(stargazer)
 library(jsonlite)
 library(tibble)
+library(lubridate)
 
 # clear workspace
 rm(list=ls())
@@ -200,6 +204,72 @@ for(i in 1:length(climate_vars)) {
 }
 rm(i, data_name, climate_data)
 
+
+
+#### add intra-state conflict data #####
+# read XLS file into workspace
+conflict_data = read_csv(
+  file = "raw/micFINAL.csv",
+  col_names = T
+) %>% select(
+  conflict_name,
+  start_event,
+  end_event
+)
+
+# clean up conflict names in order to match with data frame
+conflict_data$conflict_name = str_replace(
+  conflict_data$conflict_name,
+  "\\(.*",
+  ""
+)
+conflict_data$conflict_name = trimws(
+  conflict_data$conflict_name,
+  which = "right"
+)
+
+# load lookup table to replace country names with 3-letter country codes
+lookup_countrycodes = read_csv(
+  file = "interim/lookup_countrycodes.csv",
+  col_names = T
+)
+
+# join country codes with conflict data
+conflict_data = left_join(
+  x = conflict_data,
+  y = lookup_countrycodes,
+  by = join_by(
+    conflict_name == country
+  )
+)
+
+# view countries that could not be matched
+unique(
+  (conflict_data %>%
+     filter(is.na(conflict_data$countrycode))
+   )$conflict_name
+)
+
+# convert conflict start and end dates to year
+conflict_data$start_event = mdy(conflict_data$start_event)
+conflict_data$start_event = year(conflict_data$start_event)
+conflict_data$end_event = mdy(conflict_data$end_event)
+conflict_data$end_event = year(conflict_data$end_event)
+
+# create conflict dummy
+df$conflict = NA
+for(i in 1:nrow(df)) {
+  df$conflict[i] = as.numeric(
+    sum(
+      conflict_data$countrycode == df$X...CO2[i] &
+      conflict_data$start_event <= df$YEA[i] &
+      conflict_data$end_event >= df$YEA[i],
+      na.rm = T
+    ) > 0
+  )
+}
+rm(i, conflict_data, lookup_countrycodes)
+
 # save data frame as RDS file
 saveRDS(df, "prepared/df.rds")
 
@@ -210,7 +280,10 @@ saveRDS(df, "prepared/df.rds")
 baseline_formula = "Value ~ gdp_pc_ratio + dist + factor(X...CO2) + factor(COU_YEA)"
 
 # additional covariates
-covars = c("", "colony", "comlang_ethno", paste(climate_vars, "anom", sep = "_"))
+covars = colnames(df)[
+  ! colnames(df) %in%
+    c("X...CO2", "COU", "YEA", "Value", "gdp_pc_ratio", "dist", "COU_YEA")
+]
 
 # create folder to store model RDS files
 dir.create("models", showWarnings = F)
@@ -225,21 +298,28 @@ packages = c(
 
 # estimate models, consecutively adding covariates
 gravity_output = foreach(
-  i = 1:length(covars),
+  i = 1:(length(covars) + 1),
   .packages = packages
   ) %dopar% {
-  # create model name
-  gravity_model_name = paste(
-    "gravity_model",
-    covars[i],
-    sep = "_"
-  )
-  
-  # add covariates to baseline formula
-  if(i > 1) {
+  # create model name and add covariates to baseline formula
+  if(i == 1) {
+    # no covariates
+    gravity_model_name = "gravity_model"
+  } else {
+    # name model according to covariate added
+    gravity_model_name = paste(
+      "gravity_model",
+      covars[i - 1],
+      sep = "_"
+    )
+    # add covariate to baseline formula
     baseline_formula = paste(
       baseline_formula,
-      covars[i],
+      str_replace_all(
+        toString(covars[1:(i - 1)]),
+        ", ",
+        " + "
+      ),
       sep = " + "
     )
   }
@@ -254,15 +334,16 @@ gravity_output = foreach(
     )
   )
   
-  # # save model as RDS file
+  # save model as RDS file
   # saveRDS(
-  #   object = get(gravity_model_name),
-  #   file = file.path("models", paste0(gravity_model_name, ".rds"))
-  # )
+    # object = get(gravity_model_name),
+    # file = file.path("models", paste0(gravity_model_name, ".rds"))
+  )
   return(get(gravity_model_name))
 }
 stopCluster(cl)
 rm(cl, packages)
+
 
 
 #### create LaTeX regression table ####
