@@ -20,7 +20,8 @@ renv::init(bare = TRUE)
 # Install the packages
 install.packages(c(
   "tidyverse", "dplyr", "stringr", "readxl", "readr", "parallel",
-  "doSNOW", "foreach", "stargazer", "jsonlite", "tibble", "lubridate"
+  "doSNOW", "foreach", "stargazer", "jsonlite", "tibble", "lubridate",
+  "tidymodels", "randomForest"
   ))
 
 # Take a snapshot of the renv
