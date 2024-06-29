@@ -6,9 +6,11 @@
 # https://packagemanager.rstudio.com/cran/2023-05-01
 
 # Select the repo snapshot:
-options(repos = c(
-  REPO_NAME = "https://packagemanager.rstudio.com/cran/2023-05-01"
-  ))
+options(
+  repos = c(
+    REPO_NAME = "https://packagemanager.rstudio.com/cran/2023-05-01"
+  )
+)
 
 # Install renv
 install.packages("renv")
@@ -18,11 +20,13 @@ install.packages("renv")
 renv::init(bare = TRUE)
 
 # Install the packages
-install.packages(c(
-  "tidyverse", "dplyr", "stringr", "readxl", "readr", "parallel",
-  "doSNOW", "foreach", "stargazer", "jsonlite", "tibble", "lubridate",
-  "tidymodels", "randomForest"
-  ))
+renv::install(
+  c(
+    "tidyverse", "dplyr", "stringr", "readxl", "readr", "parallel",
+    "doSNOW", "foreach", "stargazer", "jsonlite", "tibble", "lubridate",
+    "tidymodels", "randomForest"
+  )
+)
 
 # Take a snapshot of the renv
 renv::snapshot()

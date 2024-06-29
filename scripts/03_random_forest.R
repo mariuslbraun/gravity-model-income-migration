@@ -1,18 +1,5 @@
 # load packages
-library(tidyverse)
-library(dplyr)
-library(stringr)
-library(readr)
-library(readxl)
-library(parallel)
-library(doSNOW)
-library(foreach)
-library(stargazer)
-library(jsonlite)
-library(tibble)
-library(lubridate)
-library(tidymodels)
-library(randomForest)
+source("scripts/load_packages.R")
 
 # clear workspace
 rm(list=ls())

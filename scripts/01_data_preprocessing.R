@@ -9,18 +9,7 @@
 # state conflict is taken from the Uppsala Conflict Data Program.
 
 # load packages
-library(tidyverse)
-library(dplyr)
-library(stringr)
-library(readr)
-library(readxl)
-library(parallel)
-library(doSNOW)
-library(foreach)
-library(stargazer)
-library(jsonlite)
-library(tibble)
-library(lubridate)
+source("scripts/load_packages.R")
 
 # clear workspace
 rm(list=ls())
